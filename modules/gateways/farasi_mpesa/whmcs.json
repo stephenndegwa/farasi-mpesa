@@ -1,0 +1,33 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-gateways",
+  "name": "farasi_mpesa",
+  "license": "proprietary",
+  "category": "payments",
+  "description": {
+    "name": "Farasi Mpesa",
+    "tagline": "Securely accept online payments using mpesa and auto validate invoices.",
+    "long": "Farasi Mpesa is the fast, easy, secure way to accept Mpesa payments online. Most of users know and trust the Lipa na Mpesa Payment solution online.",
+    "features": [
+      "Use of STK push when making payments",
+      "Enable option for auto validate payments",
+      "Supports till numbers and paybill numbers",
+      "Incase of over payment the module adds the balance to user account",
+      "Record transaction code and validate invoice",
+      "Allows partial payment on an invoice"
+    ]
+  },
+  "logo": {
+    "filename": "logo.png"
+  },
+  "support": {
+    "homepage": "https:\/\/www.hostraha.com\/",
+    "docs_url": "https:\/\/www.hostraha.com\/"
+  },
+  "authors": [
+    {
+      "name": "Hostraha",
+      "homepage": "https:\/\/www.hostraha.com\/"
+    }
+  ]
+}
