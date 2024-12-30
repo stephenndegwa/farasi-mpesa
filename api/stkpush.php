@@ -7,19 +7,27 @@ function getAccessToken()
     $url = 'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
     $auth = base64_encode($config['mpesa']['consumer_key'] . ':' . $config['mpesa']['consumer_secret']);
 
-    $options = [
-        'http' => [
-            'header' => "Authorization: Basic $auth\r\n",
-            'method' => 'GET'
-        ]
-    ];
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array('Authorization: Basic ' . $auth));
+    curl_setopt($ch, CURLOPT_HEADER, false);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
-    $context = stream_context_create($options);
-    $response = file_get_contents($url, false, $context);
+    $response = curl_exec($ch);
 
-    if ($response === FALSE) {
-        throw new Exception('Error fetching access token');
+    if (curl_errno($ch)) {
+        throw new Exception('Error fetching access token: ' . curl_error($ch));
     }
+
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($httpCode != 200) {
+        $errorResponse = json_decode($response, true);
+        $errorMessage = isset($errorResponse['errorMessage']) ? $errorResponse['errorMessage'] : 'Unknown error';
+        throw new Exception('Error fetching access token: HTTP ' . $httpCode . ' - ' . $errorMessage);
+    }
+
+    curl_close($ch);
 
     $data = json_decode($response, true);
     return $data['access_token'];

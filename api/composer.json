@@ -1,0 +1,13 @@
+{
+    "name": "hero/api",
+    "type": "project",
+    "authors": [
+        {
+            "name": "Stephen Ndegwa",
+            "email": "105418748+stephenndegwa@users.noreply.github.com"
+        }
+    ],
+    "require": {
+        "vlucas/phpdotenv": "^5.6"
+    }
+}
