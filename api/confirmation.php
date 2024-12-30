@@ -12,11 +12,11 @@ function saveTransaction($transaction)
     $stmt->execute($transaction);
 }
 
-function logData($data, $file = 'transaction_logs.txt')
-{
-    $logEntry = "[" . date('Y-m-d H:i:s') . "] " . json_encode($data, JSON_PRETTY_PRINT) . PHP_EOL;
-    file_put_contents($file, $logEntry, FILE_APPEND);
-}
+// function logData($data, $file = 'transaction_logs.txt')
+// {
+//     $logEntry = "[" . date('Y-m-d H:i:s') . "] " . json_encode($data, JSON_PRETTY_PRINT) . PHP_EOL;
+//     file_put_contents($file, $logEntry, FILE_APPEND);
+// }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Log incoming data
-    logData($data);
+    // logData($data);
 
     try {
         saveTransaction($data);
