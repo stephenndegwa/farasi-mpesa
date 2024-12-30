@@ -24,7 +24,7 @@ function getAccessToken()
     if ($httpCode != 200) {
         $errorResponse = json_decode($response, true);
         $errorMessage = isset($errorResponse['errorMessage']) ? $errorResponse['errorMessage'] : 'Unknown error';
-        throw new Exception('Error fetching access token: HTTP ' . $httpCode . ' - ' . $errorMessage);
+        return json_encode(['status' => 'error', 'message' => $errorMessage]);
     }
 
     curl_close($ch);
