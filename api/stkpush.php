@@ -44,30 +44,41 @@ function initiateStkPush($phone, $amount, $accountReference)
         'BusinessShortCode' => $config['mpesa']['business_short_code'],
         'Password' => $password,
         'Timestamp' => $timestamp,
-        'TransactionType' => 'CustomerPayBillOnline',
+        'TransactionType' => 'CustomerBuyGoodsOnline',
         'Amount' => $amount,
         'PartyA' => $phone,
-        'PartyB' => $config['mpesa']['business_short_code'],
+        'PartyB' => 8660256, /* Safaricom Paybill number */
         'PhoneNumber' => $phone,
         'CallBackURL' => $config['mpesa']['callback_url'],
         'AccountReference' => $accountReference,
         'TransactionDesc' => 'STK Push Payment'
     ];
 
-    $options = [
-        'http' => [
-            'header' => "Authorization: Bearer $accessToken\r\nContent-Type: application/json\r\n",
-            'method' => 'POST',
-            'content' => json_encode($data)
-        ]
-    ];
+    $url = 'https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+        'Authorization: Bearer ' . $accessToken,
+        'Content-Type: application/json'
+    ));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
-    $context = stream_context_create($options);
-    $response = file_get_contents('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', false, $context);
+    $response = curl_exec($ch);
 
-    if ($response === FALSE) {
-        throw new Exception('Error initiating STK Push');
+    if (curl_errno($ch)) {
+        throw new Exception('Error initiating STK Push: ' . curl_error($ch));
     }
+
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($httpCode != 200) {
+        $errorResponse = json_decode($response, true);
+        $errorMessage = isset($errorResponse['errorMessage']) ? $errorResponse['errorMessage'] : 'Unknown error';
+        throw new Exception('Error initiating STK Push: ' . $errorMessage);
+    }
+
+    curl_close($ch);
 
     return json_decode($response, true);
 }

@@ -1,4 +1,6 @@
 <?php
+require_once 'db.php';
+
 function saveTransaction($transaction)
 {
     $pdo = getDbConnection();
@@ -10,6 +12,12 @@ function saveTransaction($transaction)
     $stmt->execute($transaction);
 }
 
+function logData($data, $file = 'transaction_logs.txt')
+{
+    $logEntry = "[" . date('Y-m-d H:i:s') . "] " . json_encode($data, JSON_PRETTY_PRINT) . PHP_EOL;
+    file_put_contents($file, $logEntry, FILE_APPEND);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
 
@@ -19,12 +27,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // Log incoming data
+    logData($data);
+
     try {
         saveTransaction($data);
         http_response_code(200);
+        echo json_encode(['message' => 'Transaction saved successfully']);
     } catch (Exception $e) {
         error_log('Error saving transaction: ' . $e->getMessage());
         http_response_code(500);
+        echo json_encode(['error' => 'Failed to save transaction']);
     }
 }
 ?>
