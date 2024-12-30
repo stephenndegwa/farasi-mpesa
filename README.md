@@ -32,17 +32,6 @@
 
 - Use the **File Manager** in your control panel to edit the `.env` file in the `api` folder.
 - Update the values with your configuration details:
-  ```plaintext
-  CONSUMER_KEY=your_consumer_key_here
-  CONSUMER_SECRET=your_consumer_secret_here
-  BUSINESS_SHORT_CODE=your_business_shortcode_here
-  LIPA_NA_MPESA_PASSKEY=your_passkey_here
-  CALLBACK_URL=https://api.example.com/confirmation.php
-  DB_HOST=localhost
-  DB_USER=your_preferred_db_user
-  DB_PASSWORD=your_preferred_db_password
-  DB_NAME=your_preferred_db_name
-  ```
 
 ### 5. Register URLs
 
