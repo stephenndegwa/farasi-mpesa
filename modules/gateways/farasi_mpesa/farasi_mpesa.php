@@ -1,4 +1,5 @@
-<?php 
+<?php
+
 require_once __DIR__ . '/../../../init.php';
 require_once __DIR__ . '/../../../includes/gatewayfunctions.php';
 require_once __DIR__ . '/../../../includes/invoicefunctions.php';
@@ -13,50 +14,38 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
     $billreference = $_SESSION['invoiceId'];
 
     // Construct the URL
-    $transactionRef = $billreference;
-    $url = 'https://www.farasi.co.ke/pay/request.php?transactionRef=' . urlencode($transactionRef); // Updated to transactionRef
+    $url = 'https://www.farasi.co.ke/pay/request.php?transactionRef=' . urlencode($billreference);
 
     // Initialize cURL session
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     $response = curl_exec($ch);
-
-    // Handle cURL errors
-    if (curl_errno($ch)) {
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        echo json_encode(['error' => 'error', 'msg' => "<br><div class='alert alert-danger'>cURL Error: {$curlError}</div>"]);
-        exit;
-    }
     curl_close($ch);
 
     // Decode JSON response
     $obj = json_decode($response, true);
 
-    if (isset($obj['success']) && $obj['success']) {
-        $transaction = $obj['data'];
+    if (isset($obj['success']) && $obj['success'] && isset($obj['transactions']) && is_array($obj['transactions'])) {
+        foreach ($obj['transactions'] as $transaction) {
+            // Check if the transaction has already been processed
+            try {
+                checkCbTransID($transaction['transid']);
 
-        // WHMCS CheckTransaction to verify if the payment exists
-        $checkTransaction = checkCbTransID($transaction['TransID']);
-        if ($checkTransaction) {
-            echo json_encode([
-                'error' => 'error',
-                'msg' => "<br><div class='alert alert-danger'>Error! Payment already processed.</div>"
-            ]);
-            exit;
+                // Call the function to add invoice payment
+                addInvoicePayment(
+                    $invoiceid,
+                    $transaction['transid'],
+                    $transaction['amount'],
+                    0,
+                    $farasiparams['name']
+                );
+            } catch (Exception $e) {
+                // Log if a duplicate transaction is found
+                error_log('Duplicate Transaction: ' . $transaction['transid']);
+                continue;
+            }
         }
-
-        $transId = $transaction['TransID'] ?? 'Unknown';
-        $transAmount = $transaction['TransAmount'] ?? 0;
-
-        // Call the function to add invoice payment
-        addInvoicePayment(
-            $invoiceid,
-            $transId,
-            $transAmount,
-            0,
-            $farasiparams['name']
-        );
 
         // Return success message as JSON
         echo json_encode([
@@ -71,6 +60,9 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
         ]);
     }
 } else {
-    echo json_encode(['error' => 'error', 'msg' => "<br><div class='alert alert-danger'>Error! Missing session data.</div>"]);
+    echo json_encode([
+        'error' => 'error',
+        'msg' => "<br><div class='alert alert-danger'>Error! Missing session data.</div>"
+    ]);
 }
 ?>
