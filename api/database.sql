@@ -9,7 +9,9 @@ CREATE TABLE transactions (
     InvoiceNumber VARCHAR(255),
     OrgAccountBalance VARCHAR(255) NOT NULL,
     ThirdPartyTransID VARCHAR(255),
-    MSISDN VARCHAR(255) NOT NULL,
+    MSISDN TEXT NOT NULL,
     FirstName VARCHAR(255) NOT NULL,
+    MiddleName VARCHAR(255),
+    LastName VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
