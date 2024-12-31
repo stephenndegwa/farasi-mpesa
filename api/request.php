@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $transactionRef = $_GET['transactionRef'] ?? '';
 
     if (empty($transactionRef)) {
+        http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Transaction reference is required.']);
         exit;
     }
@@ -22,18 +23,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $transaction = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$transaction) {
+            http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'Transaction not found.']);
             exit;
         }
 
+        http_response_code(200);
         echo json_encode([
             'success' => true,
             'message' => 'Transaction retrieved successfully.',
             'data' => $transaction
         ]);
     } catch (Exception $e) {
+        error_log('Error fetching transaction: ' . $e->getMessage());
         http_response_code(500);
-        echo json_encode(['success' => false, 'message' => 'An error occurred.', 'error' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'An internal server error occurred.']);
     }
 } else {
     http_response_code(405);
