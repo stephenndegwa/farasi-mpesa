@@ -14,7 +14,7 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
 
     // Construct the URL
     $transactionRef = $billreference;
-    $url = 'https://www.farasi.co.ke/pay/request.php?trans=' . urlencode($transactionRef); // Replace with your server URL
+    $url = 'https://www.farasi.co.ke/pay/request.php?transactionRef=' . urlencode($transactionRef); // Updated to transactionRef
 
     // Initialize cURL session
     $ch = curl_init($url);
@@ -35,6 +35,16 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
 
     if (isset($obj['success']) && $obj['success']) {
         $transaction = $obj['data'];
+
+        // WHMCS CheckTransaction to verify if the payment exists
+        $checkTransaction = checkCbTransID($transaction['TransID']);
+        if ($checkTransaction) {
+            echo json_encode([
+                'error' => 'error',
+                'msg' => "<br><div class='alert alert-danger'>Error! Payment already processed.</div>"
+            ]);
+            exit;
+        }
 
         $transId = $transaction['TransID'] ?? 'Unknown';
         $transAmount = $transaction['TransAmount'] ?? 0;
