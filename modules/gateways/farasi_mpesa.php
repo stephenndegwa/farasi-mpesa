@@ -53,6 +53,23 @@ function farasi_mpesa_config()
             'Description' => 'Enter Your License (Get it from farasi.co.ke)',
         ),
         
+
+        'requesturl' => array(
+            'FriendlyName' => 'Request Url',
+            'Type' => 'text',
+            'Size' => '5000',
+            'Default' => '',
+            'Description' => 'Enter Your Request Url',
+        ),
+
+        'stkurl' => array(
+            'FriendlyName' => 'STK Push Url',
+            'Type' => 'text',
+            'Size' => '5000',
+            'Default' => '',
+            'Description' => 'Enter Your STK Push Url',
+        ),
+
         'shortCodeType' => array(
             'FriendlyName' => 'Short Code Type',
             'Type' => 'radio',
@@ -164,6 +181,9 @@ function farasi_mpesa_link($params)
     $mpesaApiVersion = $params['mpesaApiVersion'];
     
     $autovalidatepayments = $params['autovalidatepayments'];
+    $requesturl = $params['requesturl'];
+    $stkurl = $params['stkurl'];
+
 
     // Invoice Parameters
     $invoiceId = $params['invoiceid'];
@@ -320,7 +340,7 @@ function farasi_mpesa_link($params)
             if (empty($transactionRef)) {
                 $returnData = "<div class='alert alert-danger'><strong>Error! </strong> Transaction reference is required.</div>";
             } else {
-                $url = 'https://www.farasi.co.ke/pay/request.php?trans=' . urlencode($transactionRef); // Replace with your server URL
+                $url = $requesturl . '?trans=' . urlencode($transactionRef);
     
                 $ch = curl_init($url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -355,7 +375,7 @@ function farasi_mpesa_link($params)
             if (empty($transactionRef)) {
                 $returnData = "<div class='alert alert-danger'><strong>Error! </strong> Transaction reference is required.</div>";
             } else {
-                $url = 'https://www.farasi.co.ke/pay/request.php?trans=' . urlencode($transactionRef); // Replace with your server URL
+                $url = $requesturl . '?trans=' . urlencode($transactionRef);
     
                 $ch = curl_init($url);
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -391,7 +411,7 @@ function farasi_mpesa_link($params)
     
     else if ($_POST['sendstkpush']) {
         // Define the URL to your  server
-        $url = 'https://api.farasi.co.ke/stkpush.php'; // Replace with your server URL
+        $url = $stkurl;
         $amount = intval($amount);
         $phone = $_POST['phone'];
         $invoiceId = $params['invoiceid'];

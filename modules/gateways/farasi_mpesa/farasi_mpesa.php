@@ -12,9 +12,11 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
     $amount = $_SESSION['amount'];
     $invoiceid = $_SESSION['invoiceId'];
     $billreference = $_SESSION['invoiceId'];
+    $requesturl = $_SESSION['requesturl'];
+
 
     // Construct the URL
-    $url = 'https://www.farasi.co.ke/pay/request.php?transactionRef=' . urlencode($billreference);
+    $url = $requesturl . '?transactionRef=' . urlencode($billreference);
 
     // Initialize cURL session
     $ch = curl_init($url);
