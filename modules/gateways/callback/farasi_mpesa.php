@@ -72,27 +72,115 @@ if ($hash != md5($secretKey . $invoiceId . $transactionId . $paymentAmount)) {
 $rawInput = file_get_contents('php://input');
 $jsonData = json_decode($rawInput, true);
 
+// Log the raw input data
+logTransaction($gatewayParams['name'], ['raw_input' => $rawInput], 'Callback Received');
+
+// First, try to use the JSON format from the 2025 API
 if (!empty($jsonData) && json_last_error() === JSON_ERROR_NONE) {
-    // Using the new JSON format from API
-    $invoiceId = $jsonData['BillRefNumber'] ?? null;
-    $transactionId = $jsonData['TransID'] ?? null;
-    $paymentAmount = $jsonData['TransAmount'] ?? null;
-    $phoneNumber = $jsonData['MSISDN'] ?? null;
-    $firstName = $jsonData['FirstName'] ?? null;
-    $transactionType = $jsonData['TransactionType'] ?? null;
-    $transactionTime = $jsonData['TransTime'] ?? null;
-    
-    $success = (!empty($transactionId) && !empty($invoiceId) && $paymentAmount > 0);
-    $transactionStatus = $success ? 'Success' : 'Failure';
-    
-    // Debug data for logging
-    $debugData = [
-        'json_data' => $jsonData,
-        'success' => $success,
-        'transaction_id' => $transactionId,
-        'invoice_id' => $invoiceId,
-        'payment_amount' => $paymentAmount,
-    ];
+    // Check if this is the new API format with Body object
+    if (isset($jsonData['Body']) && isset($jsonData['Body']['stkCallback'])) {
+        // New STK Push callback format
+        $stkCallback = $jsonData['Body']['stkCallback'];
+        $resultCode = $stkCallback['ResultCode'] ?? null;
+        $resultDesc = $stkCallback['ResultDesc'] ?? null;
+        $merchantRequestID = $stkCallback['MerchantRequestID'] ?? null;
+        $checkoutRequestID = $stkCallback['CheckoutRequestID'] ?? null;
+        
+        // Only process if successful
+        if ($resultCode === 0) {
+            $callbackMetadata = $stkCallback['CallbackMetadata'] ?? [];
+            $metadataItems = $callbackMetadata['Item'] ?? [];
+            
+            // Extract metadata
+            $transactionId = null;
+            $paymentAmount = null;
+            $invoiceId = null;
+            $phoneNumber = null;
+            $transactionTime = null;
+            
+            foreach ($metadataItems as $item) {
+                if ($item['Name'] === 'MpesaReceiptNumber') {
+                    $transactionId = $item['Value'] ?? null;
+                } else if ($item['Name'] === 'Amount') {
+                    $paymentAmount = $item['Value'] ?? 0;
+                } else if ($item['Name'] === 'PhoneNumber') {
+                    $phoneNumber = $item['Value'] ?? null;
+                } else if ($item['Name'] === 'TransactionDate') {
+                    $transactionTime = $item['Value'] ?? null;
+                }
+            }
+            
+            // Extract invoice ID from Account Reference if provided
+            $accountReference = null;
+            foreach ($metadataItems as $item) {
+                if ($item['Name'] === 'AccountReference') {
+                    $accountReference = $item['Value'] ?? null;
+                    break;
+                }
+            }
+            
+            $invoiceId = $accountReference;
+            
+            $success = (!empty($transactionId) && !empty($invoiceId) && $paymentAmount > 0);
+            $transactionStatus = $success ? 'Success' : 'Failure';
+            
+            // Debug data for logging
+            $debugData = [
+                'json_data' => $jsonData,
+                'stk_callback' => $stkCallback,
+                'success' => $success,
+                'transaction_id' => $transactionId,
+                'invoice_id' => $invoiceId,
+                'payment_amount' => $paymentAmount,
+                'phone_number' => $phoneNumber,
+            ];
+        } else {
+            // STK Push failed
+            $success = false;
+            $transactionStatus = 'Failed';
+            $debugData = [
+                'json_data' => $jsonData,
+                'result_code' => $resultCode,
+                'result_desc' => $resultDesc
+            ];
+        }
+    } 
+    // Check if this is the standard M-Pesa callback format
+    else if (isset($jsonData['TransID']) || isset($jsonData['BillRefNumber'])) {
+        // Standard M-Pesa callback format
+        $invoiceId = $jsonData['BillRefNumber'] ?? null;
+        $transactionId = $jsonData['TransID'] ?? null;
+        $paymentAmount = $jsonData['TransAmount'] ?? null;
+        $phoneNumber = $jsonData['MSISDN'] ?? null;
+        $firstName = $jsonData['FirstName'] ?? null;
+        $transactionType = $jsonData['TransactionType'] ?? null;
+        $transactionTime = $jsonData['TransTime'] ?? null;
+        
+        $success = (!empty($transactionId) && !empty($invoiceId) && $paymentAmount > 0);
+        $transactionStatus = $success ? 'Success' : 'Failure';
+        
+        // Debug data for logging
+        $debugData = [
+            'json_data' => $jsonData,
+            'success' => $success,
+            'transaction_id' => $transactionId,
+            'invoice_id' => $invoiceId,
+            'payment_amount' => $paymentAmount,
+            'phone_number' => $phoneNumber,
+        ];
+    } else {
+        // Unknown JSON format
+        $success = false;
+        $transactionStatus = 'Unknown Format';
+        $debugData = [
+            'json_data' => $jsonData,
+        ];
+        
+        // Let's try to extract some common fields that might be there
+        $invoiceId = $jsonData['BillRefNumber'] ?? $jsonData['AccountReference'] ?? null;
+        $transactionId = $jsonData['TransID'] ?? $jsonData['MpesaReceiptNumber'] ?? null;
+        $paymentAmount = $jsonData['TransAmount'] ?? $jsonData['Amount'] ?? null;
+    }
 } else {
     // Fallback to using traditional POST parameters
     $success = $_POST["x_status"] ?? false;

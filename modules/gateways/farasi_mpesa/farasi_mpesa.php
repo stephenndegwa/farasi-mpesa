@@ -23,22 +23,43 @@ function mpesaLogActivity($message) {
     }
 }
 
-$farasifilename = basename(__FILE__, '.php');
+// Get module name from filename
+$farasifilename = basename(dirname(__FILE__));
+
+// Start session if not already started
+if (session_id() == '') {
+    session_start();
+}
 
 if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
+    // Get the gateway parameters from WHMCS
     $farasiparams = getGatewayVariables($farasifilename);
 
     $amount = $_SESSION['amount'];
     $invoiceid = $_SESSION['invoiceId'];
     $billreference = $_SESSION['invoiceId'];
-    $requesturl = $_SESSION['requesturl'];    // Log the transaction check start
+    
+    // Get requesturl from gateway parameters or session
+    $requesturl = $farasiparams['requesturl'] ?? $_SESSION['requesturl'] ?? '';
+    
+    // Check if requesturl is set, otherwise we can't proceed
+    if (empty($requesturl)) {
+        echo json_encode([
+            'error' => 'error',
+            'msg' => "<br><div class='alert alert-danger'>Error: API URL not configured properly in gateway settings</div>"
+        ]);
+        mpesaLogActivity("Transaction verification failed: API URL not set for Invoice #{$invoiceid}");
+        exit;
+    }
+    
+    // Log the transaction check start
     mpesaLogActivity("Checking M-Pesa transaction for Invoice #{$invoiceid}");
 
     // Make sure the URL ends with a slash before adding the path
-    $baseUrl = rtrim($requesturl, '/') . '/api';
+    $baseUrl = rtrim($requesturl, '/');
     
     // Construct the URL - using the new API endpoint format
-    $url = "{$baseUrl}/transactions?transactionRef=" . urlencode($billreference);
+    $url = "{$baseUrl}/api/transactions?transactionRef=" . urlencode($billreference);
 
     // Initialize cURL session
     $ch = curl_init($url);
@@ -49,7 +70,9 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
-    curl_close($ch);    // Log the API response
+    curl_close($ch);
+    
+    // Log the API response
     mpesaLogActivity("Transaction API Response for Invoice #{$invoiceid}: HTTP {$httpCode}, Response: " . substr($response, 0, 500));
 
     // Handle connection errors
@@ -78,6 +101,7 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
     // Process the response based on the new API format
     if (isset($obj['success']) && $obj['success'] && isset($obj['data']) && is_array($obj['data'])) {
         $transactionsProcessed = 0;
+        $successfulTransactions = [];
         
         foreach ($obj['data'] as $transaction) {
             // Check if we have a valid TransID
@@ -88,36 +112,59 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
             // Prepare transaction data
             $transId = $transaction['TransID'];
             $transAmount = $transaction['TransAmount'] ?? 0;
+            $phoneNumber = $transaction['MSISDN'] ?? 'Unknown';
             
             // Check if the transaction has already been processed
             try {
-                checkCbTransID($transId);
+                // Call WHMCS function to check if transaction already exists
+                if (function_exists('checkCbTransID')) {
+                    checkCbTransID($transId);
+                }
 
-                // Call the function to add invoice payment
-                addInvoicePayment(
-                    $invoiceid,
-                    $transId,
-                    $transAmount,
-                    0,
-                    $farasiparams['name']
-                );
-                
-                // Log successful payment
-                mpesaLogActivity("M-Pesa Payment Added: Invoice #{$invoiceid}, Transaction ID: {$transId}, Amount: {$transAmount}");
-                
-                $transactionsProcessed++;
+                // Call WHMCS function to add payment to invoice
+                if (function_exists('addInvoicePayment')) {
+                    addInvoicePayment(
+                        $invoiceid,
+                        $transId,
+                        $transAmount,
+                        0,
+                        $farasiparams['name']
+                    );
+                    
+                    // Add to successful transactions
+                    $successfulTransactions[] = [
+                        'transId' => $transId,
+                        'amount' => $transAmount,
+                        'phone' => $phoneNumber
+                    ];
+                    
+                    // Log successful payment
+                    mpesaLogActivity("M-Pesa Payment Added: Invoice #{$invoiceid}, Transaction ID: {$transId}, Amount: {$transAmount}, Phone: {$phoneNumber}");
+                    $transactionsProcessed++;
+                } else {
+                    mpesaLogActivity("Error: addInvoicePayment function not available");
+                }
             } catch (Exception $e) {
                 // Log if a duplicate transaction is found
-                mpesaLogActivity("Duplicate Transaction: {$transId}, Error: " . $e->getMessage());
+                mpesaLogActivity("Transaction processing issue: {$transId}, Error: " . $e->getMessage());
                 continue;
             }
         }
 
         if ($transactionsProcessed > 0) {
             // Return success message as JSON
+            $successMessage = "Success! Payment";
+            
+            if (count($successfulTransactions) === 1) {
+                $tx = $successfulTransactions[0];
+                $successMessage .= " of Kshs {$tx['amount']} from {$tx['phone']}";
+            } else {
+                $successMessage .= "s totaling Kshs " . array_sum(array_column($successfulTransactions, 'amount'));
+            }
+            
             echo json_encode([
-                'success' => 'success',
-                'msg' => "<br><div class='alert alert-success'>Success! Payment of Kshs {$amount} has been processed.</div>"
+                'success' => true,
+                'msg' => "<br><div class='alert alert-success'>{$successMessage} has been processed.</div>"
             ]);
         } else {
             // No new transactions were processed (might be duplicates)
@@ -135,9 +182,11 @@ if (isset($_SESSION['amount']) && isset($_SESSION['invoiceId'])) {
         ]);
     }
 } else {
+    // Missing required session data
     echo json_encode([
         'error' => 'error',
         'msg' => "<br><div class='alert alert-danger'>Error! Missing session data.</div>"
     ]);
+    mpesaLogActivity("Auto-validation error: Missing session data");
 }
 ?>
