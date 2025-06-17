@@ -1,0 +1,50 @@
+# Protect .env file
+<Files .env>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Protect .htaccess file
+<Files .htaccess>
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Protect configuration files
+<Files ~ "\.(sql|config|log|sh|inc|txt)$">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Enable cross-domain access (CORS)
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+    
+    # Handle preflight OPTIONS requests
+    RewriteEngine On
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ $1 [R=200,L]
+</IfModule>
+
+# Enable rewriting
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /api/
+    
+    # Forward API requests to their respective endpoints
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Route transaction requests
+    RewriteRule ^transactions/?$ request.php [QSA,L]
+    RewriteRule ^transactions/([^/]+)/?$ request.php?transactionRef=$1 [QSA,L]
+    
+    # Route STK push requests
+    RewriteRule ^stkpush/?$ stkpush.php [QSA,L]
+    RewriteRule ^stkpush/status/([^/]+)/?$ stkpush.php?checkoutRequestId=$1 [QSA,L]
+    
+    # Route confirmation requests
+    RewriteRule ^confirmation/?$ confirmation.php [QSA,L]
+</IfModule>

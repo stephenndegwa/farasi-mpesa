@@ -1,7 +1,37 @@
 <?php
 require_once 'db.php';
 
-header('Content-Type: application/json');
+/**
+ * Standard API Response
+ * 
+ * @param int $statusCode HTTP status code
+ * @param bool $success Whether the request was successful
+ * @param string $message Message to describe the result
+ * @param array $data Optional data payload
+ * @param array $meta Optional metadata (pagination, etc.)
+ * @return string JSON encoded response
+ */
+function apiResponse($statusCode, $success, $message, $data = null, $meta = null) {
+    header('Content-Type: application/json');
+    http_response_code($statusCode);
+    
+    $response = [
+        'status' => $statusCode,
+        'success' => $success,
+        'message' => $message
+    ];
+    
+    if ($data !== null) {
+        $response['data'] = $data;
+    }
+    
+    if ($meta !== null) {
+        $response['meta'] = $meta;
+    }
+    
+    echo json_encode($response, JSON_PRETTY_PRINT);
+    exit;
+}
 
 try {
     $pdo = getDbConnection();
@@ -9,11 +39,12 @@ try {
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $transactionRef = $_GET['transactionRef'] ?? null;
         $transID = $_GET['TransID'] ?? null;
+        $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+        $limit = isset($_GET['limit']) ? min(100, max(1, intval($_GET['limit']))) : 20;
+        $offset = ($page - 1) * $limit;
 
         if (empty($transactionRef) && empty($transID)) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Either transactionRef or TransID is required.']);
-            exit;
+            apiResponse(400, false, 'Either transactionRef or TransID is required.');
         }
 
         // Build query based on available parameters
@@ -30,32 +61,53 @@ try {
             $params[':TransID'] = $transID;
         }
 
-        $sql = "SELECT * FROM transactions WHERE " . implode(' AND ', $conditions);
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
+        // Count total matching records for pagination
+        $countSql = "SELECT COUNT(*) FROM transactions WHERE " . implode(' AND ', $conditions);
+        $countStmt = $pdo->prepare($countSql);
+        $countStmt->execute($params);
+        $totalRecords = $countStmt->fetchColumn();
 
+        // Add pagination to the main query
+        $sql = "SELECT * FROM transactions WHERE " . implode(' AND ', $conditions) . 
+               " ORDER BY created_at DESC LIMIT :limit OFFSET :offset";
+        $stmt = $pdo->prepare($sql);
+        
+        // Bind the pagination parameters
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        
+        // Bind the search parameters
+        foreach ($params as $param => $value) {
+            $stmt->bindValue($param, $value);
+        }
+        
+        $stmt->execute();
         $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($transactions)) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'No transactions found.']);
-            exit;
+            apiResponse(404, false, 'No transactions found.');
         }
 
-        echo json_encode([
-            'success' => true,
-            'message' => 'Transactions retrieved successfully.',
-            'data' => $transactions
-        ]);
+        $totalPages = ceil($totalRecords / $limit);
+        
+        $meta = [
+            'pagination' => [
+                'total' => $totalRecords,
+                'per_page' => $limit,
+                'current_page' => $page,
+                'total_pages' => $totalPages,
+                'has_more' => ($page < $totalPages)
+            ]
+        ];
+
+        apiResponse(200, true, 'Transactions retrieved successfully.', $transactions, $meta);
 
     } else {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Invalid request method.']);
+        apiResponse(405, false, 'Method not allowed. This endpoint only supports GET requests.');
     }
 
 } catch (Exception $e) {
     error_log('Database error: ' . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'An internal server error occurred.']);
+    apiResponse(500, false, 'An internal server error occurred.', null, ['error_details' => $e->getMessage()]);
 }
 ?>

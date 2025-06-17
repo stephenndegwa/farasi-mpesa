@@ -11,7 +11,5 @@ CREATE TABLE transactions (
     ThirdPartyTransID VARCHAR(255),
     MSISDN TEXT NOT NULL,
     FirstName VARCHAR(255) NOT NULL,
-    MiddleName VARCHAR(255),
-    LastName VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
