@@ -61,15 +61,63 @@ if ($hash != md5($secretKey . $invoiceId . $transactionId . $paymentAmount)) {
 }
 
 /**
+ * Process M-Pesa callbacks.
+ * 
+ * This function handles the callback data from the M-Pesa API.
+ * It validates the invoice ID and transaction ID, then logs the transaction
+ * and adds the payment to the invoice.
+ */
+
+// Check if we're receiving JSON data (new M-Pesa format)
+$rawInput = file_get_contents('php://input');
+$jsonData = json_decode($rawInput, true);
+
+if (!empty($jsonData) && json_last_error() === JSON_ERROR_NONE) {
+    // Using the new JSON format from API
+    $invoiceId = $jsonData['BillRefNumber'] ?? null;
+    $transactionId = $jsonData['TransID'] ?? null;
+    $paymentAmount = $jsonData['TransAmount'] ?? null;
+    $phoneNumber = $jsonData['MSISDN'] ?? null;
+    $firstName = $jsonData['FirstName'] ?? null;
+    $transactionType = $jsonData['TransactionType'] ?? null;
+    $transactionTime = $jsonData['TransTime'] ?? null;
+    
+    $success = (!empty($transactionId) && !empty($invoiceId) && $paymentAmount > 0);
+    $transactionStatus = $success ? 'Success' : 'Failure';
+    
+    // Debug data for logging
+    $debugData = [
+        'json_data' => $jsonData,
+        'success' => $success,
+        'transaction_id' => $transactionId,
+        'invoice_id' => $invoiceId,
+        'payment_amount' => $paymentAmount,
+    ];
+} else {
+    // Fallback to using traditional POST parameters
+    $success = $_POST["x_status"] ?? false;
+    $invoiceId = $_POST["x_invoice_id"] ?? null;
+    $transactionId = $_POST["x_trans_id"] ?? null;
+    $paymentAmount = $_POST["x_amount"] ?? null;
+    $paymentFee = $_POST["x_fee"] ?? 0;
+    $hash = $_POST["x_hash"] ?? '';
+
+    $transactionStatus = $success ? 'Success' : 'Failure';
+    
+    // Debug data for logging
+    $debugData = $_POST;
+}
+
+// Basic validation
+if (empty($invoiceId) || empty($transactionId)) {
+    logTransaction($gatewayParams['name'], $debugData, 'Missing required parameters');
+    header('HTTP/1.1 400 Bad Request');
+    exit('Missing required parameters');
+}
+
+/**
  * Validate Callback Invoice ID.
- *
- * Checks invoice ID is a valid invoice number. Note it will count an
- * invoice in any status as valid.
- *
- * Performs a die upon encountering an invalid Invoice ID.
- *
- * Returns a normalised invoice ID.
- *
+ * 
  * @param int $invoiceId Invoice ID
  * @param string $gatewayName Gateway Name
  */
@@ -77,34 +125,23 @@ $invoiceId = checkCbInvoiceID($invoiceId, $gatewayParams['name']);
 
 /**
  * Check Callback Transaction ID.
- *
- * Performs a check for any existing transactions with the same given
- * transaction number.
- *
- * Performs a die upon encountering a duplicate.
- *
+ * 
  * @param string $transactionId Unique Transaction ID
  */
 checkCbTransID($transactionId);
 
 /**
  * Log Transaction.
- *
- * Add an entry to the Gateway Log for debugging purposes.
- *
- * The debug data can be a string or an array. In the case of an
- * array it will be
- *
- * @param string $gatewayName        Display label
- * @param string|array $debugData    Data to log
- * @param string $transactionStatus  Status
+ * 
+ * @param string $gatewayName Display label
+ * @param string|array $debugData Data to log
+ * @param string $transactionStatus Status
  */
-logTransaction($gatewayParams['name'], $_POST, $transactionStatus);
+logTransaction($gatewayParams['name'], $debugData, $transactionStatus);
 
 $paymentSuccess = false;
 
 if ($success) {
-
     /**
      * Add Invoice Payment.
      *
@@ -120,21 +157,41 @@ if ($success) {
         $invoiceId,
         $transactionId,
         $paymentAmount,
-        $paymentFee,
+        0, // No payment fee for M-Pesa
         $gatewayModuleName
     );
 
     $paymentSuccess = true;
-
+    
+    // Log successful M-Pesa payment
+    logTransaction(
+        $gatewayParams['name'], 
+        array_merge($debugData, ['message' => 'M-Pesa payment added successfully']), 
+        'Payment Successful'
+    );
+    
+    // Return success response to M-Pesa API
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ResultCode' => 0,
+        'ResultDesc' => 'Confirmation received successfully'
+    ]);
+} else {
+    // Log failed payment
+    logTransaction(
+        $gatewayParams['name'], 
+        array_merge($debugData, ['message' => 'Failed to process M-Pesa payment']), 
+        'Payment Failed'
+    );
+    
+    // Return error response to M-Pesa API
+    header('Content-Type: application/json');
+    echo json_encode([
+        'ResultCode' => 1,
+        'ResultDesc' => 'Failed to process transaction'
+    ]);
 }
 
-/**
- * Redirect to invoice.
- *
- * Performs redirect back to the invoice upon completion of the 3D Secure
- * process displaying the transaction result along with the invoice.
- *
- * @param int $invoiceId        Invoice ID
- * @param bool $paymentSuccess  Payment status
- */
-callback3DSecureRedirect($invoiceId, $paymentSuccess);
+// Do not redirect - this is an API endpoint
+// The M-Pesa API expects a response, not a redirect
+exit();

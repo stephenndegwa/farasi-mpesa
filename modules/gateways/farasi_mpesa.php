@@ -408,20 +408,24 @@ function farasi_mpesa_link($params)
     }
 
     
-    
-    else if ($_POST['sendstkpush']) {
-        // Define the URL to your  server
-        $url = $stkurl;
+      else if ($_POST['sendstkpush']) {
+        // Define the URL to your server - now using the updated API endpoint
+        $url = rtrim($stkurl, '/') . '/api/stkpush';
         $amount = intval($amount);
         $phone = $_POST['phone'];
         $invoiceId = $params['invoiceid'];
+        $description = "Payment for Invoice #{$invoiceId}";
 
         // Prepare data to be sent in POST request
         $postData = json_encode([
             'phone' => $phone,
             'amount' => $amount,
-            'invoiceid' => $invoiceId
+            'invoiceid' => $invoiceId,
+            'description' => $description
         ]);
+
+        // Log request for debugging
+        logActivity("Sending STK Push request for Invoice #{$invoiceId}. Phone: {$phone}, Amount: {$amount}");
 
         // Initialize cURL
         $ch = curl_init($url);
@@ -432,20 +436,76 @@ function farasi_mpesa_link($params)
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+        // Set timeout to prevent long waits
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); 
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
         // Execute cURL request
         $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
 
-        // Decode the response
-        $obj = json_decode($response, true);
+        // Log the response
+        logActivity("STK Push API Response for Invoice #{$invoiceId}: HTTP {$httpCode}, Response: " . substr($response, 0, 500));
 
-        // Process the response
-        if ($obj['status'] == 'success') {
-            $returnData = "<div class='alert alert-success'><strong>Success! Payment Request has been sent to " . htmlspecialchars($phone) . ". Check your phone and enter PIN </strong></div>";
+        // Handle connection errors
+        if ($curlError) {
+            $returnData = "<div class='alert alert-danger'><strong>Connection Error: </strong>" . htmlspecialchars($curlError) . "</div>";
+            logActivity("STK Push API Connection Error: {$curlError}");
         } else {
-            $errorMessage = isset($obj['message']) ? $obj['message'] : 'An unknown error occurred.';
-            $returnData = "<div class='alert alert-danger'><strong> Error! </strong> " . htmlspecialchars($errorMessage) . "</div>";
+            // Decode the response
+            $obj = json_decode($response, true);
+
+            // Check if the response is a valid JSON
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $returnData = "<div class='alert alert-danger'><strong>Invalid Response: </strong>Received invalid response from payment server</div>";
+                logActivity("STK Push API Invalid Response: " . $response);
+            } else {
+                // Process the response - updated to match the new API response format
+                if ($obj['success'] === true) {
+                    // Store checkout_request_id in session for status checking
+                    $_SESSION['checkout_request_id'] = $obj['data']['checkout_request_id'] ?? '';
+                    
+                    $returnData = "<div class='alert alert-success'><strong>Success! </strong>" . 
+                        ($obj['data']['customer_message'] ?? 'Payment request has been sent to your phone. Check your phone and enter PIN') . 
+                        "</div>";
+                      // Add JavaScript to check transaction status after a delay
+                    if (!empty($_SESSION['checkout_request_id'])) {
+                        $returnData .= '
+                        <script>
+                            setTimeout(function() {
+                                checkStkStatus("' . $_SESSION['checkout_request_id'] . '");
+                            }, 10000);  // Check after 10 seconds
+                            
+                            function checkStkStatus(checkoutRequestId) {
+                                fetch("' . rtrim($stkurl, '/') . '/api/stkpush/status/" + checkoutRequestId)
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success && data.data && data.data.transaction_status === "COMPLETED") {
+                                        document.getElementById("stkStatusMessage").innerHTML = 
+                                            "<div class=\"alert alert-success\"><strong>Payment Successful!</strong> Your payment has been received.</div>";
+                                        // Reload the page after displaying success message
+                                        setTimeout(function() { window.location.reload(); }, 3000);
+                                    } else if (!data.success) {
+                                        document.getElementById("stkStatusMessage").innerHTML = 
+                                            "<div class=\"alert alert-warning\"><strong>Payment Pending</strong> " + 
+                                            (data.message || "We haven\'t received your payment yet.") + "</div>";
+                                    }
+                                })
+                                .catch(error => {
+                                    console.error("Error checking STK status:", error);
+                                });
+                            }
+                        </script>
+                        <div id="stkStatusMessage"></div>
+                        ';
+                    }
+                } else {
+                    $errorMessage = $obj['message'] ?? ($obj['data']['error'] ?? 'An unknown error occurred.');
+                    $returnData = "<div class='alert alert-danger'><strong>Error: </strong>" . htmlspecialchars($errorMessage) . "</div>";
+                }
+            }
         }
     } else {
         $returnData = "";
